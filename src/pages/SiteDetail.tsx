@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { StatusBadge } from "@/components/StatusBadge";
-import { ArrowLeft, MapPin, User, Calendar, Wrench, Truck } from "lucide-react";
+import { ArrowLeft, MapPin, User, Calendar, Wrench, Truck, Search } from "lucide-react";
 import type { LedgerEntry, MachineryStatus } from "@/domain/types";
 import { MACHINERY_EDIT_STATUSES, MACHINERY_STATUS_LABELS } from "@/lib/machinery-status-options";
 import { format } from "date-fns";
@@ -35,6 +35,7 @@ const SiteDetail = () => {
   const [targetSiteId, setTargetSiteId] = useState<string>("");
   const [manageMovementOpen, setManageMovementOpen] = useState(false);
   const [manageMovementEditEntry, setManageMovementEditEntry] = useState<LedgerEntry | null>(null);
+  const [machineryQuery, setMachineryQuery] = useState("");
   const site = sites.find((s) => s.id === id);
   const allowMachineryEdit = canEditMachineryOnSite(user.role);
   const showRequestMachinery = canCreateMachineryRequest(user.role);
@@ -72,6 +73,18 @@ const SiteDetail = () => {
       return acc;
     }, {}),
   ).sort((a, b) => b[1].length - a[1].length);
+  const machineryNeedle = machineryQuery.trim().toLowerCase();
+  const filteredCategoryGroups = machineryNeedle
+    ? categoryGroups
+        .map(([category, machinesInCategory]) => {
+          if (category.toLowerCase().includes(machineryNeedle)) return [category, machinesInCategory] as const;
+          const filtered = machinesInCategory.filter(
+            (m) => m.code.toLowerCase().includes(machineryNeedle) || m.name.toLowerCase().includes(machineryNeedle),
+          );
+          return filtered.length > 0 ? ([category, filtered] as const) : null;
+        })
+        .filter((group): group is [string, typeof assigned] => group !== null)
+    : categoryGroups;
   const deployment = machines.length ? Math.round((assigned.length / Math.max(machines.length, 1)) * 100) : 0;
 
   const openEditDialog = (machineId: string) => {
@@ -196,8 +209,8 @@ const SiteDetail = () => {
       )}
 
       <div>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-display text-lg font-semibold">
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <h2 className="shrink-0 font-display text-lg font-semibold">
             {isFinished ? "Site history" : "Assigned Machinery"}
             {!isFinished && (
               <span className="ml-2 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
@@ -205,7 +218,19 @@ const SiteDetail = () => {
               </span>
             )}
           </h2>
-          <div className="flex items-center gap-2">
+          {!isFinished && (
+            <div className="relative min-w-[12rem] flex-1">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={machineryQuery}
+                onChange={(e) => setMachineryQuery(e.target.value)}
+                placeholder="Search category, code, name…"
+                aria-label="Search assigned machinery"
+                className="w-full rounded-md border border-border bg-card py-1.5 pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring/30"
+              />
+            </div>
+          )}
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             {allowMachineryEdit && !isFinished && (
               <Button
                 type="button"
@@ -229,9 +254,13 @@ const SiteDetail = () => {
             <Wrench className="mx-auto mb-2 h-6 w-6 opacity-40" />
             No machinery assigned yet.
           </div>
+        ) : filteredCategoryGroups.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
+            No machinery matches your search.
+          </div>
         ) : (
           <Accordion type="single" collapsible className="space-y-3">
-            {categoryGroups.map(([category, machinesInCategory]) => {
+            {filteredCategoryGroups.map(([category, machinesInCategory]) => {
               const groupUnitCount = countEffectiveMachineryUnits(machinesInCategory);
               const qtyHint =
                 groupUnitCount < machinesInCategory.length &&
